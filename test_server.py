@@ -55,6 +55,111 @@ def delete_task(task_id: int) -> dict:
     return {"success": False, "error": f"Task {task_id} not found"}
 
 
+# A tool to filter tasks by status
+@mcp.tool()
+def filter_tasks_by_status(status: str) -> list[dict]:
+    """Filter tasks by status. Accepted values: 'pending', 'completed'."""
+    valid_statuses = ["pending", "completed"]
+    if status not in valid_statuses:
+        return [{"error": f"Invalid status '{status}'. Use: {valid_statuses}"}]
+
+    return [t for t in tasks if t["status"] == status]
+
+
+# A tool to filter tasks by date
+@mcp.tool()
+def filter_tasks_by_date(
+    date_from: str = "", date_to: str = "", field: str = "created_at"
+) -> list[dict]:
+    """
+    Filter tasks between two dates (ISO format: YYYY-MM-DD).
+    field: 'created_at' or 'completed_at'
+    """
+    valid_fields = ["created_at", "completed_at"]
+    if field not in valid_fields:
+        return [{"error": f"Invalid field '{field}'. Use: {valid_fields}"}]
+
+    result = []
+    for task in tasks:
+        task_date_str = task.get(field)
+        if not task_date_str:
+            continue
+
+        task_date = datetime.fromisoformat(task_date_str).date()
+
+        if date_from:
+            if task_date < datetime.fromisoformat(date_from).date():
+                continue
+        if date_to:
+            if task_date > datetime.fromisoformat(date_to).date():
+                continue
+
+        result.append(task)
+
+    return result if result else [{"message": "No tasks found for this date range"}]
+
+
+# A tool to search tasks by keyword
+@mcp.tool()
+def search_tasks(keyword: str) -> list[dict]:
+    """Search tasks by keyword in title or description (case-insensitive)."""
+    keyword_lower = keyword.lower()
+    result = [
+        t
+        for t in tasks
+        if keyword_lower in t["title"].lower()
+        or keyword_lower in t.get("description", "").lower()
+    ]
+
+    return result if result else [{"message": f"No tasks matching '{keyword}'"}]
+
+
+# A combined tool to filter tasks by multiple criteria
+@mcp.tool()
+def filter_tasks(
+    status: str = "",
+    keyword: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> list[dict]:
+    """
+    Filter tasks with multiple optional criteria combined.
+    - status: 'pending' or 'completed'
+    - keyword: searched in title and description
+    - date_from / date_to: ISO format YYYY-MM-DD (based on created_at)
+    """
+    result = tasks[:]
+
+    if status:
+        result = [t for t in result if t["status"] == status]
+
+    if keyword:
+        kw = keyword.lower()
+        result = [
+            t
+            for t in result
+            if kw in t["title"].lower() or kw in t.get("description", "").lower()
+        ]
+
+    if date_from:
+        from_date = datetime.fromisoformat(date_from).date()
+        result = [
+            t
+            for t in result
+            if datetime.fromisoformat(t["created_at"]).date() >= from_date
+        ]
+
+    if date_to:
+        to_date = datetime.fromisoformat(date_to).date()
+        result = [
+            t
+            for t in result
+            if datetime.fromisoformat(t["created_at"]).date() <= to_date
+        ]
+
+    return result if result else [{"message": "No tasks match the given filters"}]
+
+
 # Resources with @mcp.resource() decorator
 # A resource to get the list of all tasks
 @mcp.resource("tasks://all")  # creates a resource with a URI-like identifier
