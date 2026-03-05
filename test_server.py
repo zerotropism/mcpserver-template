@@ -318,7 +318,11 @@ Use the tasks://all resource to access the complete task list."""
 @mcp.prompt()
 def priority_analysis_prompt() -> str:
     """Generate a prompt for analyzing task priorities."""
-    return """Please analyze the current task list from tasks://all and evaluate priorities:
+    return """Please analyze the current task list using the following resources:
+- tasks://all → full task list
+- tasks://stats → completion rate and oldest pending task
+
+Based on this data, evaluate priorities:
 
 1. **Urgency vs Importance matrix**
    - Urgent & Important → do immediately
@@ -328,7 +332,7 @@ def priority_analysis_prompt() -> str:
 
 2. **Risk assessment**
    - Which pending tasks are blocking others?
-   - Which tasks have been pending the longest?
+   - Which tasks have been pending the longest? (see tasks://stats)
 
 3. **Recommendations**
    - Top 3 tasks to tackle first
@@ -342,7 +346,11 @@ Provide a clear priority ranking with justification for each decision."""
 @mcp.prompt()
 def scheduling_prompt(available_hours: float = 8.0) -> str:
     """Generate a prompt for scheduling tasks across a workday."""
-    return f"""Based on the task list from tasks://all, create a realistic schedule for today.
+    return f"""Based on the following resources:
+- tasks://today → tasks created today
+- tasks://pending → all pending tasks
+
+Create a realistic schedule for today.
 
 **Constraints:**
 - Available time: {available_hours} hours
@@ -355,19 +363,26 @@ Produce a time-blocked schedule in this format:
 | Time | Task | Duration | Notes |
 |------|------|----------|-------|
 
-Include only pending tasks and explain any tasks left unscheduled."""
+Prioritize tasks from tasks://today first, then fill remaining slots
+from tasks://pending. Explain any tasks left unscheduled."""
 
 
 # A prompt to conduct a weekly review of tasks, celebrating wins and identifying blockers
 @mcp.prompt()
 def weekly_review_prompt() -> str:
     """Generate a prompt for a weekly review of tasks."""
-    return """Conduct a weekly review using tasks://all:
+    return """Conduct a weekly review using the following resources:
+- tasks://weekly-summary → tasks created or completed this week
+- tasks://stats → overall completion rate and oldest pending task
+- tasks://completed → full list of completed tasks
 
-1. **Completed this week** — celebrate wins 🎉
-2. **Still pending** — why are they stuck?
-3. **Patterns** — any recurring blockers?
-4. **Next week plan** — top 5 priorities
+Structure your review as follows:
+
+1. **Wins this week** 🎉 (from tasks://weekly-summary)
+2. **Still pending** ⏳ — why are they stuck?
+3. **Overall health** 📊 (use tasks://stats completion rate)
+4. **Patterns** — any recurring blockers?
+5. **Next week plan** — top 5 priorities from tasks://pending
 
 Keep it concise and actionable."""
 
