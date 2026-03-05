@@ -1,4 +1,4 @@
-# fastmcptest
+# MCP server template
 
 Un serveur MCP (Model Context Protocol) minimaliste en Python, construit avec [FastMCP](https://github.com/jlowin/fastmcp). Il implémente un gestionnaire de tâches en mémoire exposant des **outils**, des **ressources** et un **prompt** à tout client MCP compatible.
 
