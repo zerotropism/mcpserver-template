@@ -215,5 +215,63 @@ def task_summary_prompt() -> str:
 Use the tasks://all resource to access the complete task list."""
 
 
+# A prompt to analyze task priorities and provide recommendations
+@mcp.prompt()
+def priority_analysis_prompt() -> str:
+    """Generate a prompt for analyzing task priorities."""
+    return """Please analyze the current task list from tasks://all and evaluate priorities:
+
+1. **Urgency vs Importance matrix**
+   - Urgent & Important → do immediately
+   - Important but not urgent → schedule
+   - Urgent but not important → delegate
+   - Neither → consider removing
+
+2. **Risk assessment**
+   - Which pending tasks are blocking others?
+   - Which tasks have been pending the longest?
+
+3. **Recommendations**
+   - Top 3 tasks to tackle first
+   - Tasks that can be batched together
+   - Tasks to consider dropping
+
+Provide a clear priority ranking with justification for each decision."""
+
+
+# A prompt to for scheduling tasks across a workday, accounting for energy levels and breaks
+@mcp.prompt()
+def scheduling_prompt(available_hours: float = 8.0) -> str:
+    """Generate a prompt for scheduling tasks across a workday."""
+    return f"""Based on the task list from tasks://all, create a realistic schedule for today.
+
+**Constraints:**
+- Available time: {available_hours} hours
+- Account for breaks (15min every 2h, 1h lunch)
+- Peak focus hours: 9am–12pm (use for complex tasks)
+- Low energy hours: 2pm–3pm (use for simple tasks)
+
+**Deliverable:**
+Produce a time-blocked schedule in this format:
+| Time | Task | Duration | Notes |
+|------|------|----------|-------|
+
+Include only pending tasks and explain any tasks left unscheduled."""
+
+
+# A prompt to conduct a weekly review of tasks, celebrating wins and identifying blockers
+@mcp.prompt()
+def weekly_review_prompt() -> str:
+    """Generate a prompt for a weekly review of tasks."""
+    return """Conduct a weekly review using tasks://all:
+
+1. **Completed this week** — celebrate wins 🎉
+2. **Still pending** — why are they stuck?
+3. **Patterns** — any recurring blockers?
+4. **Next week plan** — top 5 priorities
+
+Keep it concise and actionable."""
+
+
 if __name__ == "__main__":
     mcp.run()
