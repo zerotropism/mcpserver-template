@@ -199,6 +199,105 @@ def get_pending_tasks() -> str:
     return result
 
 
+# A resource to get only completed tasks with completion time
+@mcp.resource("tasks://completed")
+def get_completed_tasks() -> str:
+    """Get only completed tasks with completion time."""
+    completed = [t for t in tasks if t["status"] == "completed"]
+
+    if not completed:
+        return "No completed tasks yet."
+
+    result = "Completed Tasks:\n\n"
+    for task in completed:
+        result += f"✅ [{task['id']}] {task['title']}\n"
+        result += f"   Completed at: {task.get('completed_at', 'N/A')}\n"
+        result += f"   Created at:   {task['created_at']}\n\n"
+
+    return result
+
+
+# A resource to get statistics about the task list
+@mcp.resource("tasks://stats")
+def get_task_stats() -> str:
+    """Get statistics about the task list."""
+    total = len(tasks)
+    completed = sum(1 for t in tasks if t["status"] == "completed")
+    pending = total - completed
+
+    oldest_pending = None
+    if pending:
+        pending_tasks = [t for t in tasks if t["status"] == "pending"]
+        oldest_pending = min(pending_tasks, key=lambda t: t["created_at"])
+
+    result = "Task Statistics:\n\n"
+    result += f"📊 Total tasks:     {total}\n"
+    result += f"✅ Completed:       {completed}\n"
+    result += f"⏳ Pending:         {pending}\n"
+
+    if total > 0:
+        rate = (completed / total) * 100
+        result += f"📈 Completion rate: {rate:.1f}%\n"
+
+    if oldest_pending:
+        result += f"\n⚠️  Oldest pending task:\n"
+        result += f"   [{oldest_pending['id']}] {oldest_pending['title']}\n"
+        result += f"   Created: {oldest_pending['created_at']}\n"
+
+    return result
+
+
+# A resource to get tasks created or due today
+@mcp.resource("tasks://today")
+def get_today_tasks() -> str:
+    """Get tasks created or due today."""
+    today = datetime.now().date()
+    today_tasks = [
+        t for t in tasks if datetime.fromisoformat(t["created_at"]).date() == today
+    ]
+
+    if not today_tasks:
+        return "No tasks for today."
+
+    result = f"Today's Tasks ({today}):\n\n"
+    for task in today_tasks:
+        status_emoji = "✅" if task["status"] == "completed" else "⏳"
+        result += f"{status_emoji} [{task['id']}] {task['title']}\n"
+        if task["description"]:
+            result += f"   {task['description']}\n"
+        result += "\n"
+
+    return result
+
+
+# A resource to get a summary of tasks from the past week
+@mcp.resource("tasks://weekly-summary")
+def get_weekly_summary() -> str:
+    """Get a summary of tasks from the past 7 days."""
+    from datetime import timedelta
+
+    today = datetime.now().date()
+    week_ago = today - timedelta(days=7)
+
+    recent_tasks = [
+        t for t in tasks if datetime.fromisoformat(t["created_at"]).date() >= week_ago
+    ]
+
+    completed_this_week = [t for t in recent_tasks if t["status"] == "completed"]
+    pending_this_week = [t for t in recent_tasks if t["status"] == "pending"]
+
+    result = f"Weekly Summary ({week_ago} → {today}):\n\n"
+    result += f"🎉 Completed this week: {len(completed_this_week)}\n"
+    for task in completed_this_week:
+        result += f"   ✅ [{task['id']}] {task['title']}\n"
+
+    result += f"\n⏳ Still pending: {len(pending_this_week)}\n"
+    for task in pending_this_week:
+        result += f"   🔲 [{task['id']}] {task['title']}\n"
+
+    return result
+
+
 # Prompts with @mcp.prompt() decorator
 # A prompt to summarize the current task list and provide insights
 # Tells the AI what information to include, and references the resource to use for data
