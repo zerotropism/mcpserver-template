@@ -1,72 +1,102 @@
 from fastmcp import FastMCP
 from datetime import datetime
+import sqlite3
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 mcp = FastMCP("TaskTracker")
 
-# Simple in-memory task storage
-# In real applications, this would be a database
-tasks = []
-task_id_counter = 1
+DB_PATH = os.getenv("DB_PATH", "tasks.db")
 
 
-# Tools with @mcp.tool() decorator
-# A tool to add a new task to the task list
+def get_db() -> sqlite3.Connection:
+    """Get a database connection with row factory."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    """Create the tasks table if it doesn't exist."""
+    with get_db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                title        TEXT NOT NULL,
+                description  TEXT DEFAULT '',
+                status       TEXT DEFAULT 'pending',
+                created_at   TEXT NOT NULL,
+                completed_at TEXT
+            )
+        """
+        )
+        conn.commit()
+
+
+init_db()
+
+
+# Tools
 @mcp.tool()
 def add_task(title: str, description: str = "") -> dict:
     """Add a new task to the task list."""
-    global task_id_counter
-
-    task = {
-        "id": task_id_counter,
-        "title": title,
-        "description": description,
-        "status": "pending",
-        "created_at": datetime.now().isoformat(),
-    }
-
-    tasks.append(task)
-    task_id_counter += 1
-
-    return task
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO tasks (title, description, status, created_at) VALUES (?, ?, 'pending', ?)",
+            (title, description, now),
+        )
+        conn.commit()
+        task = conn.execute(
+            "SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+    return dict(task)
 
 
-# A tool to mark tasks as completed
 @mcp.tool()
 def complete_task(task_id: int) -> dict:
     """Mark a task as completed."""
-    for task in tasks:
-        if task["id"] == task_id:
-            task["status"] = "completed"
-            task["completed_at"] = datetime.now().isoformat()
-            return task
+    now = datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE tasks SET status = 'completed', completed_at = ? WHERE id = ?",
+            (now, task_id),
+        )
+        conn.commit()
+        task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    if not task:
+        return {"error": f"Task {task_id} not found"}
+    return dict(task)
 
-    return {"error": f"Task {task_id} not found"}
 
-
-# A tool to delete a task from the list
 @mcp.tool()
 def delete_task(task_id: int) -> dict:
     """Delete a task from the list."""
-    for i, task in enumerate(tasks):
-        if task["id"] == task_id:
-            deleted_task = tasks.pop(i)
-            return {"success": True, "deleted": deleted_task}
+    with get_db() as conn:
+        task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+    return {"success": True, "deleted": dict(task)}
 
-    return {"success": False, "error": f"Task {task_id} not found"}
 
-
-# A tool to filter tasks by status
 @mcp.tool()
 def filter_tasks_by_status(status: str) -> list[dict]:
     """Filter tasks by status. Accepted values: 'pending', 'completed'."""
     valid_statuses = ["pending", "completed"]
     if status not in valid_statuses:
         return [{"error": f"Invalid status '{status}'. Use: {valid_statuses}"}]
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = ?", (status,)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
-    return [t for t in tasks if t["status"] == status]
 
-
-# A tool to filter tasks by date
 @mcp.tool()
 def filter_tasks_by_date(
     date_from: str = "", date_to: str = "", field: str = "created_at"
@@ -79,228 +109,178 @@ def filter_tasks_by_date(
     if field not in valid_fields:
         return [{"error": f"Invalid field '{field}'. Use: {valid_fields}"}]
 
-    result = []
-    for task in tasks:
-        task_date_str = task.get(field)
-        if not task_date_str:
-            continue
+    query = f"SELECT * FROM tasks WHERE {field} IS NOT NULL"
+    params = []
+    if date_from:
+        query += f" AND {field} >= ?"
+        params.append(date_from)
+    if date_to:
+        query += f" AND {field} <= ?"
+        params.append(date_to + "T23:59:59")
 
-        task_date = datetime.fromisoformat(task_date_str).date()
-
-        if date_from:
-            if task_date < datetime.fromisoformat(date_from).date():
-                continue
-        if date_to:
-            if task_date > datetime.fromisoformat(date_to).date():
-                continue
-
-        result.append(task)
-
-    return result if result else [{"message": "No tasks found for this date range"}]
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows] or [
+        {"message": "No tasks found for this date range"}
+    ]
 
 
-# A tool to search tasks by keyword
 @mcp.tool()
 def search_tasks(keyword: str) -> list[dict]:
     """Search tasks by keyword in title or description (case-insensitive)."""
-    keyword_lower = keyword.lower()
-    result = [
-        t
-        for t in tasks
-        if keyword_lower in t["title"].lower()
-        or keyword_lower in t.get("description", "").lower()
-    ]
-
-    return result if result else [{"message": f"No tasks matching '{keyword}'"}]
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE LOWER(title) LIKE ? OR LOWER(description) LIKE ?",
+            (f"%{keyword.lower()}%", f"%{keyword.lower()}%"),
+        ).fetchall()
+    return [dict(r) for r in rows] or [{"message": f"No tasks matching '{keyword}'"}]
 
 
-# A combined tool to filter tasks by multiple criteria
 @mcp.tool()
 def filter_tasks(
-    status: str = "",
-    keyword: str = "",
-    date_from: str = "",
-    date_to: str = "",
+    status: str = "", keyword: str = "", date_from: str = "", date_to: str = ""
 ) -> list[dict]:
-    """
-    Filter tasks with multiple optional criteria combined.
-    - status: 'pending' or 'completed'
-    - keyword: searched in title and description
-    - date_from / date_to: ISO format YYYY-MM-DD (based on created_at)
-    """
-    result = tasks[:]
+    """Filter tasks with multiple optional criteria combined."""
+    query = "SELECT * FROM tasks WHERE 1=1"
+    params = []
 
     if status:
-        result = [t for t in result if t["status"] == status]
-
+        query += " AND status = ?"
+        params.append(status)
     if keyword:
-        kw = keyword.lower()
-        result = [
-            t
-            for t in result
-            if kw in t["title"].lower() or kw in t.get("description", "").lower()
-        ]
-
+        query += " AND (LOWER(title) LIKE ? OR LOWER(description) LIKE ?)"
+        params.extend([f"%{keyword.lower()}%", f"%{keyword.lower()}%"])
     if date_from:
-        from_date = datetime.fromisoformat(date_from).date()
-        result = [
-            t
-            for t in result
-            if datetime.fromisoformat(t["created_at"]).date() >= from_date
-        ]
-
+        query += " AND created_at >= ?"
+        params.append(date_from)
     if date_to:
-        to_date = datetime.fromisoformat(date_to).date()
-        result = [
-            t
-            for t in result
-            if datetime.fromisoformat(t["created_at"]).date() <= to_date
-        ]
+        query += " AND created_at <= ?"
+        params.append(date_to + "T23:59:59")
 
-    return result if result else [{"message": "No tasks match the given filters"}]
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows] or [{"message": "No tasks match the given filters"}]
 
 
-# Resources with @mcp.resource() decorator
-# A resource to get the list of all tasks
-@mcp.resource("tasks://all")  # creates a resource with a URI-like identifier
+# Resources
+@mcp.resource("tasks://all")
 def get_all_tasks() -> str:
-    """Get all tasks as formatted text."""
-    if not tasks:
-        return "No tasks found"
-
-    result = "Current Tasks:\n\n"
-    for task in tasks:
+    """Get the list of all tasks."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
+    if not rows:
+        return "No tasks found."
+    result = "All Tasks:\n\n"
+    for task in rows:
         status_emoji = "✅" if task["status"] == "completed" else "⏳"
         result += f"{status_emoji} [{task['id']}] {task['title']}\n"
         if task["description"]:
-            result += f"   Description: {task['description']}\n"
-        result += f"   Status: {task['status']}\n"
+            result += f"   {task['description']}\n"
         result += f"   Created: {task['created_at']}\n\n"
-
     return result
 
 
-# A resource to get only pending tasks
 @mcp.resource("tasks://pending")
 def get_pending_tasks() -> str:
     """Get only pending tasks."""
-    pending = [t for t in tasks if t["status"] == "pending"]
-
-    if not pending:
-        return "No pending tasks!"
-
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'pending' ORDER BY created_at ASC"
+        ).fetchall()
+    if not rows:
+        return "No pending tasks."
     result = "Pending Tasks:\n\n"
-    for task in pending:
+    for task in rows:
         result += f"⏳ [{task['id']}] {task['title']}\n"
         if task["description"]:
             result += f"   {task['description']}\n"
-        result += "\n"
-
+        result += f"   Created: {task['created_at']}\n\n"
     return result
 
 
-# A resource to get only completed tasks with completion time
 @mcp.resource("tasks://completed")
 def get_completed_tasks() -> str:
     """Get only completed tasks with completion time."""
-    completed = [t for t in tasks if t["status"] == "completed"]
-
-    if not completed:
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'completed' ORDER BY completed_at DESC"
+        ).fetchall()
+    if not rows:
         return "No completed tasks yet."
-
     result = "Completed Tasks:\n\n"
-    for task in completed:
+    for task in rows:
         result += f"✅ [{task['id']}] {task['title']}\n"
-        result += f"   Completed at: {task.get('completed_at', 'N/A')}\n"
+        result += f"   Completed at: {task['completed_at']}\n"
         result += f"   Created at:   {task['created_at']}\n\n"
-
     return result
 
 
-# A resource to get statistics about the task list
 @mcp.resource("tasks://stats")
 def get_task_stats() -> str:
     """Get statistics about the task list."""
-    total = len(tasks)
-    completed = sum(1 for t in tasks if t["status"] == "completed")
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        completed = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status = 'completed'"
+        ).fetchone()[0]
+        oldest = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+
     pending = total - completed
-
-    oldest_pending = None
-    if pending:
-        pending_tasks = [t for t in tasks if t["status"] == "pending"]
-        oldest_pending = min(pending_tasks, key=lambda t: t["created_at"])
-
     result = "Task Statistics:\n\n"
     result += f"📊 Total tasks:     {total}\n"
     result += f"✅ Completed:       {completed}\n"
     result += f"⏳ Pending:         {pending}\n"
-
     if total > 0:
-        rate = (completed / total) * 100
-        result += f"📈 Completion rate: {rate:.1f}%\n"
-
-    if oldest_pending:
+        result += f"📈 Completion rate: {(completed / total) * 100:.1f}%\n"
+    if oldest:
         result += f"\n⚠️  Oldest pending task:\n"
-        result += f"   [{oldest_pending['id']}] {oldest_pending['title']}\n"
-        result += f"   Created: {oldest_pending['created_at']}\n"
-
+        result += f"   [{oldest['id']}] {oldest['title']}\n"
+        result += f"   Created: {oldest['created_at']}\n"
     return result
 
 
-# A resource to get tasks created or due today
 @mcp.resource("tasks://today")
 def get_today_tasks() -> str:
-    """Get tasks created or due today."""
-    today = datetime.now().date()
-    today_tasks = [
-        t for t in tasks if datetime.fromisoformat(t["created_at"]).date() == today
-    ]
-
-    if not today_tasks:
+    """Get tasks created today."""
+    today = datetime.now().date().isoformat()
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE DATE(created_at) = ?", (today,)
+        ).fetchall()
+    if not rows:
         return "No tasks for today."
-
     result = f"Today's Tasks ({today}):\n\n"
-    for task in today_tasks:
+    for task in rows:
         status_emoji = "✅" if task["status"] == "completed" else "⏳"
         result += f"{status_emoji} [{task['id']}] {task['title']}\n"
         if task["description"]:
-            result += f"   {task['description']}\n"
-        result += "\n"
-
+            result += f"   {task['description']}\n\n"
     return result
 
 
-# A resource to get a summary of tasks from the past week
 @mcp.resource("tasks://weekly-summary")
 def get_weekly_summary() -> str:
     """Get a summary of tasks from the past 7 days."""
-    from datetime import timedelta
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE DATE(created_at) >= DATE('now', '-7 days')"
+        ).fetchall()
 
-    today = datetime.now().date()
-    week_ago = today - timedelta(days=7)
-
-    recent_tasks = [
-        t for t in tasks if datetime.fromisoformat(t["created_at"]).date() >= week_ago
-    ]
-
-    completed_this_week = [t for t in recent_tasks if t["status"] == "completed"]
-    pending_this_week = [t for t in recent_tasks if t["status"] == "pending"]
-
-    result = f"Weekly Summary ({week_ago} → {today}):\n\n"
-    result += f"🎉 Completed this week: {len(completed_this_week)}\n"
-    for task in completed_this_week:
+    completed = [r for r in rows if r["status"] == "completed"]
+    pending = [r for r in rows if r["status"] == "pending"]
+    result = "Weekly Summary (last 7 days):\n\n"
+    result += f"🎉 Completed this week: {len(completed)}\n"
+    for task in completed:
         result += f"   ✅ [{task['id']}] {task['title']}\n"
-
-    result += f"\n⏳ Still pending: {len(pending_this_week)}\n"
-    for task in pending_this_week:
+    result += f"\n⏳ Still pending: {len(pending)}\n"
+    for task in pending:
         result += f"   🔲 [{task['id']}] {task['title']}\n"
-
     return result
 
 
-# Prompts with @mcp.prompt() decorator
-# A prompt to summarize the current task list and provide insights
-# Tells the AI what information to include, and references the resource to use for data
+# Prompts
 @mcp.prompt()
 def task_summary_prompt() -> str:
     """Generate a prompt for summarizing tasks."""

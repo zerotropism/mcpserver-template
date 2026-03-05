@@ -98,7 +98,7 @@ async def test_prompts(client: Client):
 
 
 async def test_server():
-    async with Client("test_server.py") as client:
+    async with Client("server.py") as client:
         tools = await client.list_tools()
         print(f"🚀 Connected — {len(tools)} tools available: {[t.name for t in tools]}")
 
