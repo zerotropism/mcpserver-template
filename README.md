@@ -6,7 +6,7 @@ MCP (Model Context Protocol) construit avec [FastMCP](https://github.com/jlowin/
 ## Structure du repo
 
 ```
-fastmcptest/
+gitrepo/
 ├── list-based-memory/     # Version 1 — stockage en liste Python (in-memory)
 │   ├── server.py
 │   └── client.py
