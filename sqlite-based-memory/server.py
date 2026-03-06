@@ -162,6 +162,13 @@ def filter_tasks(
     return [dict(r) for r in rows] or [{"message": "No tasks match the given filters"}]
 
 
+# A tool to mark multiple tasks as completed in one call
+@mcp.tool()
+def complete_tasks(task_ids: list[int]) -> list[dict]:
+    """Mark multiple tasks as completed."""
+    return [complete_task(task_id) for task_id in task_ids]
+
+
 # Resources
 @mcp.resource("tasks://all")
 def get_all_tasks() -> str:
