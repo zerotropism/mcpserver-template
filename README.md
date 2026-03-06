@@ -6,13 +6,15 @@ MCP (Model Context Protocol) construit avec [FastMCP](https://github.com/jlowin/
 ## Structure du repo
 
 ```
-gitrepo/
+fastmcptest/
 ├── list-based-memory/     # Version 1 — stockage en liste Python (in-memory)
 │   ├── server.py
-│   └── client.py
+│   ├── client.py          # Client de test automatisé
+│   └── ollama_client.py   # Chat interactif avec un LLM local via Ollama
 ├── sqlite-based-memory/   # Version 2 — stockage persistant avec SQLite
 │   ├── server.py
-│   ├── client.py
+│   ├── client.py          # Client de test automatisé
+│   ├── ollama_client.py   # Chat interactif avec un LLM local via Ollama
 │   └── .env               # à créer (voir ci-dessous)
 ├── pyproject.toml
 └── README.md
@@ -28,9 +30,8 @@ les bases de FastMCP.
 
 ```bash
 cd list-based-memory
-python server.py
-# dans un autre terminal
-python client.py
+python client.py         # tests automatisés
+python ollama_client.py  # chat interactif (nécessite Ollama)
 ```
 
 ### 🗄️ `sqlite-based-memory` — Stockage SQLite
@@ -44,10 +45,8 @@ cd sqlite-based-memory
 # Créer le fichier .env
 echo "DB_PATH=tasks.db" > .env
 
-# Lancer le serveur
-python server.py
-# dans un autre terminal
-python client.py
+python client.py         # tests automatisés
+python ollama_client.py  # chat interactif (nécessite Ollama)
 ```
 
 ## Fonctionnalités (communes aux deux versions)
@@ -83,6 +82,47 @@ python client.py
 | `priority_analysis_prompt` | Matrice urgence/importance | — |
 | `scheduling_prompt` | Planning heure par heure | `available_hours` (défaut: 8.0) |
 | `weekly_review_prompt` | Bilan hebdomadaire | — |
+
+## Chat interactif avec un LLM local (`ollama_client.py`)
+
+`ollama_client.py` connecte un modèle Ollama au serveur MCP pour interagir
+en langage naturel avec le gestionnaire de tâches.
+
+```
+Vous → Ollama (LLM local) → tool_calls → FastMCP Client → server.py
+                          ←  résultat  ←
+```
+
+### Prérequis Ollama
+
+```bash
+brew install ollama
+ollama pull <model>
+uv add ollama
+```
+
+### Exemple
+
+```
+Vous : Ajoute une tâche "Préparer la démo" avec la description "Slides pour vendredi"
+  🔧 Appel outil : add_task({'title': 'Préparer la démo', 'description': 'Slides pour vendredi'})
+
+Assistant : La tâche "Préparer la démo" a été ajoutée avec l'ID 1.
+
+Vous : Quelles sont mes tâches en attente ?
+  🔧 Appel outil : filter_tasks_by_status({'status': 'pending'})
+
+Assistant : Tu as 1 tâche en attente : [1] Préparer la démo.
+```
+
+### Robustesse face aux modèles imparfaits
+
+`ollama_client.py` inclut deux garde-fous pour les modèles à tool calling fragile (ex: `llama3.2`) :
+
+| Fonction | Problème corrigé |
+|---|---|
+| `normalize_args` | Le modèle encode les valeurs comme `{"type": "string", "value": "..."}` au lieu d'une chaîne |
+| `sanitize_args` | Le modèle hallucine des paramètres inexistants dans le schéma |
 
 ## Prérequis
 
