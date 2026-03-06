@@ -62,6 +62,7 @@ python ollama_client.py  # chat interactif (nécessite Ollama)
 | `filter_tasks_by_date(date_from?, date_to?, field?)` | Filtre par plage de dates ISO `YYYY-MM-DD` |
 | `search_tasks(keyword)` | Recherche dans titre et description |
 | `filter_tasks(status?, keyword?, date_from?, date_to?)` | Filtre combiné multi-critères |
+| `complete_tasks(task_ids)` | Marque une liste de tâches comme terminées |
 
 ### Ressources (`@mcp.resource`)
 
