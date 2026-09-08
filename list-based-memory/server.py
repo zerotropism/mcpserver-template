@@ -1,5 +1,6 @@
-from fastmcp import FastMCP
 from datetime import datetime
+
+from fastmcp import FastMCP
 
 mcp = FastMCP("TaskTracker")
 
@@ -87,12 +88,10 @@ def filter_tasks_by_date(
 
         task_date = datetime.fromisoformat(task_date_str).date()
 
-        if date_from:
-            if task_date < datetime.fromisoformat(date_from).date():
-                continue
-        if date_to:
-            if task_date > datetime.fromisoformat(date_to).date():
-                continue
+        if date_from and task_date < datetime.fromisoformat(date_from).date():
+            continue
+        if date_to and task_date > datetime.fromisoformat(date_to).date():
+            continue
 
         result.append(task)
 
@@ -107,8 +106,7 @@ def search_tasks(keyword: str) -> list[dict]:
     result = [
         t
         for t in tasks
-        if keyword_lower in t["title"].lower()
-        or keyword_lower in t.get("description", "").lower()
+        if keyword_lower in t["title"].lower() or keyword_lower in t.get("description", "").lower()
     ]
 
     return result if result else [{"message": f"No tasks matching '{keyword}'"}]
@@ -136,26 +134,16 @@ def filter_tasks(
     if keyword:
         kw = keyword.lower()
         result = [
-            t
-            for t in result
-            if kw in t["title"].lower() or kw in t.get("description", "").lower()
+            t for t in result if kw in t["title"].lower() or kw in t.get("description", "").lower()
         ]
 
     if date_from:
         from_date = datetime.fromisoformat(date_from).date()
-        result = [
-            t
-            for t in result
-            if datetime.fromisoformat(t["created_at"]).date() >= from_date
-        ]
+        result = [t for t in result if datetime.fromisoformat(t["created_at"]).date() >= from_date]
 
     if date_to:
         to_date = datetime.fromisoformat(date_to).date()
-        result = [
-            t
-            for t in result
-            if datetime.fromisoformat(t["created_at"]).date() <= to_date
-        ]
+        result = [t for t in result if datetime.fromisoformat(t["created_at"]).date() <= to_date]
 
     return result if result else [{"message": "No tasks match the given filters"}]
 
@@ -247,7 +235,7 @@ def get_task_stats() -> str:
         result += f"📈 Completion rate: {rate:.1f}%\n"
 
     if oldest_pending:
-        result += f"\n⚠️  Oldest pending task:\n"
+        result += "\n⚠️  Oldest pending task:\n"
         result += f"   [{oldest_pending['id']}] {oldest_pending['title']}\n"
         result += f"   Created: {oldest_pending['created_at']}\n"
 
@@ -259,9 +247,7 @@ def get_task_stats() -> str:
 def get_today_tasks() -> str:
     """Get tasks created or due today."""
     today = datetime.now().date()
-    today_tasks = [
-        t for t in tasks if datetime.fromisoformat(t["created_at"]).date() == today
-    ]
+    today_tasks = [t for t in tasks if datetime.fromisoformat(t["created_at"]).date() == today]
 
     if not today_tasks:
         return "No tasks for today."
@@ -286,9 +272,7 @@ def get_weekly_summary() -> str:
     today = datetime.now().date()
     week_ago = today - timedelta(days=7)
 
-    recent_tasks = [
-        t for t in tasks if datetime.fromisoformat(t["created_at"]).date() >= week_ago
-    ]
+    recent_tasks = [t for t in tasks if datetime.fromisoformat(t["created_at"]).date() >= week_ago]
 
     completed_this_week = [t for t in recent_tasks if t["status"] == "completed"]
     pending_this_week = [t for t in recent_tasks if t["status"] == "pending"]

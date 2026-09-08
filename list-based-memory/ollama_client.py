@@ -1,10 +1,11 @@
 import asyncio
 import json
+from collections.abc import Mapping
+from typing import Any
+
 import ollama
 from fastmcp import Client
 from mcp.types import TextContent
-from collections.abc import Mapping
-from typing import Any
 
 MODEL = "llama3.2"
 
@@ -36,9 +37,7 @@ def normalize_args(args: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def sanitize_args(
-    name: str, args: dict[str, Any], tools_by_name: dict
-) -> dict[str, Any]:
+def sanitize_args(name: str, args: dict[str, Any], tools_by_name: dict) -> dict[str, Any]:
     """Removes arguments not declared in the tool's input schema,
     to handle hallucinated parameters from poorly-behaving models."""
     tool = tools_by_name.get(name)
@@ -105,9 +104,7 @@ async def run():
                     args = tool_call.function.arguments or {}
 
                     print(f"  🔧 Appel outil : {name}({args})")
-                    clean_args = sanitize_args(
-                        name, normalize_args(args), tools_by_name
-                    )
+                    clean_args = sanitize_args(name, normalize_args(args), tools_by_name)
                     result = await mcp.call_tool(name, clean_args)
 
                     # Extraire le texte du résultat

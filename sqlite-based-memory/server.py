@@ -1,8 +1,9 @@
-from fastmcp import FastMCP
-from datetime import datetime
-import sqlite3
 import os
+import sqlite3
+from datetime import datetime
+
 from dotenv import load_dotenv
+from fastmcp import FastMCP
 
 load_dotenv()
 
@@ -21,8 +22,7 @@ def get_db() -> sqlite3.Connection:
 def init_db():
     """Create the tasks table if it doesn't exist."""
     with get_db() as conn:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 title        TEXT NOT NULL,
@@ -31,8 +31,7 @@ def init_db():
                 created_at   TEXT NOT NULL,
                 completed_at TEXT
             )
-        """
-        )
+        """)
         conn.commit()
 
 
@@ -46,13 +45,12 @@ def add_task(title: str, description: str = "") -> dict:
     now = datetime.now().isoformat()
     with get_db() as conn:
         cursor = conn.execute(
-            "INSERT INTO tasks (title, description, status, created_at) VALUES (?, ?, 'pending', ?)",
+            "INSERT INTO tasks (title, description, status, created_at) "
+            "VALUES (?, ?, 'pending', ?)",
             (title, description, now),
         )
         conn.commit()
-        task = conn.execute(
-            "SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)
-        ).fetchone()
+        task = conn.execute("SELECT * FROM tasks WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return dict(task)
 
 
@@ -91,9 +89,7 @@ def filter_tasks_by_status(status: str) -> list[dict]:
     if status not in valid_statuses:
         return [{"error": f"Invalid status '{status}'. Use: {valid_statuses}"}]
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM tasks WHERE status = ?", (status,)
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM tasks WHERE status = ?", (status,)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -120,9 +116,7 @@ def filter_tasks_by_date(
 
     with get_db() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in rows] or [
-        {"message": "No tasks found for this date range"}
-    ]
+    return [dict(r) for r in rows] or [{"message": "No tasks found for this date range"}]
 
 
 @mcp.tool()
@@ -242,7 +236,7 @@ def get_task_stats() -> str:
     if total > 0:
         result += f"📈 Completion rate: {(completed / total) * 100:.1f}%\n"
     if oldest:
-        result += f"\n⚠️  Oldest pending task:\n"
+        result += "\n⚠️  Oldest pending task:\n"
         result += f"   [{oldest['id']}] {oldest['title']}\n"
         result += f"   Created: {oldest['created_at']}\n"
     return result
@@ -253,9 +247,7 @@ def get_today_tasks() -> str:
     """Get tasks created today."""
     today = datetime.now().date().isoformat()
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT * FROM tasks WHERE DATE(created_at) = ?", (today,)
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM tasks WHERE DATE(created_at) = ?", (today,)).fetchall()
     if not rows:
         return "No tasks for today."
     result = f"Today's Tasks ({today}):\n\n"

@@ -1,6 +1,8 @@
+import asyncio
+from pathlib import Path
+
 from fastmcp import Client
 from mcp.types import TextContent, TextResourceContents
-import asyncio
 
 
 async def test_tools(client: Client):
@@ -44,9 +46,7 @@ async def test_tools(client: Client):
 
     # Combined filter
     print("\n🧩 Combined filter (pending + 'docs')...")
-    result = await client.call_tool(
-        "filter_tasks", {"status": "pending", "keyword": "docs"}
-    )
+    result = await client.call_tool("filter_tasks", {"status": "pending", "keyword": "docs"})
     assert isinstance(result.content[0], TextContent)
     print(f"  {result.content[0].text}")
 
@@ -98,7 +98,7 @@ async def test_prompts(client: Client):
 
 
 async def test_server():
-    async with Client("server.py") as client:
+    async with Client(Path("server.py")) as client:
         tools = await client.list_tools()
         print(f"🚀 Connected — {len(tools)} tools available: {[t.name for t in tools]}")
 
