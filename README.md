@@ -1,149 +1,167 @@
 # FastMCP — Task Tracker Template
 
-Un repo pédagogique illustrant deux approches de persistance pour un serveur
-MCP (Model Context Protocol) construit avec [FastMCP](https://github.com/jlowin/fastmcp).
+Serveur MCP (Model Context Protocol) construit avec [FastMCP](https://github.com/jlowin/fastmcp),
+illustrant l'injection de persistance : un seul serveur, plusieurs backends de stockage
+interchangeables derrière un `Protocol`.
 
-## Structure du repo
-
-```
-fastmcptest/
-├── list-based-memory/     # Version 1 — stockage en liste Python (in-memory)
-│   ├── server.py
-│   ├── client.py          # Client de test automatisé
-│   └── ollama_client.py   # Chat interactif avec un LLM local via Ollama
-├── sqlite-based-memory/   # Version 2 — stockage persistant avec SQLite
-│   ├── server.py
-│   ├── client.py          # Client de test automatisé
-│   ├── ollama_client.py   # Chat interactif avec un LLM local via Ollama
-│   └── .env               # à créer (voir ci-dessous)
-├── pyproject.toml
-└── README.md
-```
-
-## Versions
-
-### 📋 `list-based-memory` — Stockage en mémoire
-
-Stockage des tâches dans une liste Python. Simple, sans dépendances, mais
-les données sont **perdues à chaque redémarrage**. Idéal pour comprendre
-les bases de FastMCP.
+## Démarrage rapide
 
 ```bash
-cd list-based-memory
-python client.py         # tests automatisés
-python ollama_client.py  # chat interactif (nécessite Ollama)
+uv sync
+uv run pytest                      # la suite tourne sur les deux backends
+OLLAMA_MODEL=<modèle> uv run mcpserver-template-agent
 ```
 
-### 🗄️ `sqlite-based-memory` — Stockage SQLite
+## Structure
 
-Stockage persistant dans un fichier `tasks.db`. Les données survivent aux
-redémarrages. Même API MCP, seule la couche de persistance change.
+```
+src/mcpserver_template/
+├── models.py             # Task, TaskFilter, TaskStats (pydantic)
+├── repository.py         # Protocol TaskRepository + TaskNotFoundError
+├── repositories/
+│   ├── memory.py         # stockage en mémoire, perdu au redémarrage
+│   └── sqlite.py         # stockage persistant dans un fichier
+├── server.py             # outils, ressources, prompts ; repository injecté
+└── ollama_client.py      # chat interactif avec un LLM local
+tests/
+├── test_models.py        # logique de filtrage, sans stockage
+├── test_repositories.py  # même suite, paramétrée sur chaque backend
+└── test_server.py        # via le Client FastMCP in-memory
+```
+
+Le serveur ne connaît que le `Protocol`. Ajouter un backend (Postgres, Redis…) consiste à
+écrire une classe implémentant les sept méthodes et à l'ajouter au registre `BACKENDS` :
+la suite de tests s'y applique sans être modifiée, en ajoutant une valeur au paramètre
+de la fixture.
+
+## Choix du backend
+
+`TASK_BACKEND` sélectionne la persistance au lancement, `DB_PATH` le fichier SQLite.
 
 ```bash
-cd sqlite-based-memory
-
-# Créer le fichier .env
-echo "DB_PATH=tasks.db" > .env
-
-python client.py         # tests automatisés
-python ollama_client.py  # chat interactif (nécessite Ollama)
+TASK_BACKEND=memory  uv run mcpserver-template                # défaut
+TASK_BACKEND=sqlite  DB_PATH=tasks.db uv run mcpserver-template
 ```
 
-## Fonctionnalités (communes aux deux versions)
+| | `memory` | `sqlite` |
+|---|---|---|
+| Persistance | perdue au redémarrage | fichier `DB_PATH` |
+| Filtrage | en Python, via `TaskFilter.matches()` | traduit en SQL paramétré |
+| Usage | tests, démonstration | cas réels |
 
-### Outils (`@mcp.tool`)
+## API MCP
+
+### Outils
 
 | Outil | Description |
 |---|---|
-| `add_task(title, description?)` | Ajoute une nouvelle tâche |
-| `complete_task(task_id)` | Marque une tâche comme terminée |
-| `delete_task(task_id)` | Supprime une tâche |
-| `filter_tasks_by_status(status)` | Filtre par statut (`pending` / `completed`) |
-| `filter_tasks_by_date(date_from?, date_to?, field?)` | Filtre par plage de dates ISO `YYYY-MM-DD` |
-| `search_tasks(keyword)` | Recherche dans titre et description |
-| `filter_tasks(status?, keyword?, date_from?, date_to?)` | Filtre combiné multi-critères |
-| `complete_tasks(task_ids)` | Marque une liste de tâches comme terminées |
+| `add_task(title, description?)` | Ajoute une tâche |
+| `complete_task(task_id)` | Marque une tâche comme terminée (idempotent) |
+| `complete_tasks(task_ids)` | Marque plusieurs tâches comme terminées |
+| `delete_task(task_id)` | Supprime une tâche et la retourne |
+| `filter_tasks(task_filter)` | Filtre unique multi-critères |
 
-### Ressources (`@mcp.resource`)
+`TaskFilter` regroupe tous les critères, tous optionnels et combinés en ET :
+`status`, `keyword` (titre et description, insensible à la casse), `date_from`, `date_to`
+(bornes incluses, format ISO `YYYY-MM-DD`) et `date_field` (`created_at` ou `completed_at`).
+Un filtre vide retourne tout ; aucune correspondance retourne une liste vide.
+
+```json
+{"task_filter": {"status": "pending", "keyword": "rapport"}}
+```
+
+Les erreurs sont levées en exceptions et remontées comme erreurs MCP : un identifiant
+inconnu déclenche `TaskNotFoundError`, un critère inconnu une erreur de validation.
+Aucun outil ne retourne de dictionnaire `{"error": ...}`.
+
+### Ressources
 
 | URI | Description |
 |---|---|
 | `tasks://all` | Toutes les tâches |
 | `tasks://pending` | Tâches en attente |
 | `tasks://completed` | Tâches terminées |
-| `tasks://stats` | Statistiques globales |
+| `tasks://stats` | Compteurs, taux d'achèvement, plus ancienne tâche en attente |
 | `tasks://today` | Tâches créées aujourd'hui |
 | `tasks://weekly-summary` | Résumé des 7 derniers jours |
 
-### Prompts (`@mcp.prompt`)
+### Prompts
 
 | Prompt | Description | Paramètres |
 |---|---|---|
-| `task_summary_prompt` | Analyse et actions suggérées | — |
-| `priority_analysis_prompt` | Matrice urgence/importance | — |
-| `scheduling_prompt` | Planning heure par heure | `available_hours` (défaut: 8.0) |
-| `weekly_review_prompt` | Bilan hebdomadaire | — |
+| `task_summary_prompt` | Synthèse de la liste et urgences | — |
+| `priority_analysis_prompt` | Classement des tâches en attente | — |
+| `scheduling_prompt` | Planning sur le temps disponible | `available_hours` (défaut : 8.0) |
+| `weekly_review_prompt` | Bilan hebdomadaire chiffré | — |
 
-## Chat interactif avec un LLM local (`ollama_client.py`)
+Chaque prompt désigne explicitement la ressource à lire et interdit d'inventer des tâches.
 
-`ollama_client.py` connecte un modèle Ollama au serveur MCP pour interagir
-en langage naturel avec le gestionnaire de tâches.
+## Chat interactif avec un LLM local
 
 ```
-Vous → Ollama (LLM local) → tool_calls → FastMCP Client → server.py
+Vous → Ollama (LLM local) → tool_calls → FastMCP Client → serveur MCP
                           ←  résultat  ←
 ```
 
-### Prérequis Ollama
-
 ```bash
 brew install ollama
-ollama pull <model>
-uv add ollama
+ollama pull <modèle>
+OLLAMA_MODEL=<modèle> TASK_BACKEND=sqlite DB_PATH=tasks.db uv run mcpserver-template-agent
 ```
 
-### Exemple
-
 ```
-Vous : Ajoute une tâche "Préparer la démo" avec la description "Slides pour vendredi"
-  🔧 Appel outil : add_task({'title': 'Préparer la démo', 'description': 'Slides pour vendredi'})
+Vous : ajoute deux tâches : préparer le rapport et faire la démo
+  🔧 Appel outil : add_task({'title': 'préparer le rapport'})
+  🔧 Appel outil : add_task({'title': 'faire la démo'})
 
-Assistant : La tâche "Préparer la démo" a été ajoutée avec l'ID 1.
+Assistant : J'ai ajouté les deux tâches à votre liste.
 
-Vous : Quelles sont mes tâches en attente ?
-  🔧 Appel outil : filter_tasks_by_status({'status': 'pending'})
+Vous : quelles tâches sont en attente ?
+  🔧 Appel outil : filter_tasks({'task_filter': {'status': 'pending'}})
 
-Assistant : Tu as 1 tâche en attente : [1] Préparer la démo.
+Assistant : Vous avez 2 tâches en attente : préparer le rapport, faire la démo.
 ```
+
+### Modèle requis
+
+`filter_tasks` attend un objet imbriqué. Les petits modèles n'y parviennent pas :
+`llama3.2` (3B) invente des champs, puis cesse d'émettre des appels d'outils et se met
+à imprimer du JSON dans sa réponse. Un modèle de 7B ou plus, entraîné aux appels d'outils,
+produit l'objet correctement dès le premier essai.
 
 ### Robustesse face aux modèles imparfaits
-
-`ollama_client.py` inclut deux garde-fous pour les modèles à tool calling fragile (ex: `llama3.2`) :
 
 | Fonction | Problème corrigé |
 |---|---|
 | `normalize_args` | Le modèle encode les valeurs comme `{"type": "string", "value": "..."}` au lieu d'une chaîne |
-| `sanitize_args` | Le modèle hallucine des paramètres inexistants dans le schéma |
+| `sanitize_args` | Le modèle hallucine des paramètres absents du schéma |
+
+### Variables d'environnement et transport stdio
+
+Le SDK MCP ne transmet pas l'environnement au sous-processus serveur : il n'hérite que
+d'une liste blanche (`HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, `USER`). Toute variable
+de configuration doit être passée explicitement au transport, ce que fait `server_env()` :
+
+```python
+StdioTransport("uv", ["run", "mcpserver-template"], env=server_env())
+```
+
+Sans cela, `TASK_BACKEND` et `DB_PATH` sont silencieusement ignorés et le serveur retombe
+sur son backend par défaut.
+
+## Développement
+
+```bash
+uv sync --all-groups
+uv run ruff check . && uv run ruff format --check .
+uv run pytest
+```
+
+Les tests n'ont besoin ni d'Ollama ni d'un sous-processus : `create_server(repository)`
+reçoit un repository de test et le `Client` FastMCP s'y connecte en mémoire.
 
 ## Prérequis
 
 - Python ≥ 3.12
 - [uv](https://docs.astral.sh/uv/)
-
-## Installation
-
-```bash
-git clone <repo>
-cd fastmcptest
-uv sync
-```
-
-## Différences entre les deux versions
-
-| | `list-based-memory` | `sqlite-based-memory` |
-|---|---|---|
-| **Persistance** | ❌ Perdue au redémarrage | ✅ Fichier `tasks.db` |
-| **Dépendances** | `fastmcp` | `fastmcp` + `python-dotenv` |
-| **Configuration** | Aucune | `.env` avec `DB_PATH` |
-| **Complexité** | ⭐ Débutant | ⭐⭐ Intermédiaire |
-| **Usage** | Apprendre MCP | Cas réels |
+- [Ollama](https://ollama.com/) pour le chat interactif uniquement
