@@ -1,14 +1,22 @@
 [project]
-name = "fastmcptest"
+name = "mcpserver-template"
 version = "0.1.0"
-description = "Simple MCP server in Python w/ FastMCP"
+description = "FastMCP server template with pluggable task persistence"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastmcp>=3.1.0",
+    "fastmcp>=4",
+    "pydantic>=2.10",
     "ollama>=0.6.1",
     "python-dotenv>=1.2.2",
 ]
+
+[project.scripts]
+mcpserver-template = "mcpserver_template.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
