@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 mcpserver-template = "mcpserver_template.server:main"
+mcpserver-template-agent = "mcpserver_template.ollama_client:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -21,5 +22,9 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.16.6",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
