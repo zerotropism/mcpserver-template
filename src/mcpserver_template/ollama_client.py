@@ -1,13 +1,22 @@
 import asyncio
 import json
+import os
 from collections.abc import Mapping
 from typing import Any
 
 import ollama
 from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
 from mcp.types import TextContent
 
-MODEL = "llama3.2"
+MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+
+SERVER_ENV_VARS = ("TASK_BACKEND", "DB_PATH")
+
+
+def server_env() -> dict[str, str]:
+    """The MCP SDK only inherits a whitelist of variables; ours must be passed explicitly."""
+    return {k: v for k in SERVER_ENV_VARS if (v := os.getenv(k)) is not None}
 
 
 def mcp_tools_to_ollama(mcp_tools):
@@ -18,7 +27,7 @@ def mcp_tools_to_ollama(mcp_tools):
             "function": {
                 "name": tool.name,
                 "description": tool.description or "",
-                "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+                "parameters": tool.input_schema or {"type": "object", "properties": {}},
             },
         }
         for tool in mcp_tools
@@ -41,15 +50,15 @@ def sanitize_args(name: str, args: dict[str, Any], tools_by_name: dict) -> dict[
     """Removes arguments not declared in the tool's input schema,
     to handle hallucinated parameters from poorly-behaving models."""
     tool = tools_by_name.get(name)
-    if not tool or not tool.inputSchema:
+    if not tool or not tool.input_schema:
         return args
-    known_keys = set(tool.inputSchema.get("properties", {}).keys())
+    known_keys = set(tool.input_schema.get("properties", {}).keys())
     return {k: v for k, v in args.items() if k in known_keys}
 
 
 async def run():
     """Main loop to interact with the user and call MCP tools via Ollama."""
-    async with Client("./server.py") as mcp:
+    async with Client(StdioTransport("uv", ["run", "mcpserver-template"], env=server_env())) as mcp:
         # Connect to the MCP server
         mcp_tools = await mcp.list_tools()
         ollama_tools = mcp_tools_to_ollama(mcp_tools)
@@ -123,5 +132,10 @@ async def run():
                     )
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console entry point."""
     asyncio.run(run())
+
+
+if __name__ == "__main__":
+    main()
