@@ -9,7 +9,7 @@ from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 from mcp.types import TextContent
 
-MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:4b-mlx")
 
 SERVER_ENV_VARS = ("TASK_BACKEND", "DB_PATH")
 
