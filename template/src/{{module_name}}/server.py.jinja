@@ -1,29 +1,49 @@
-"""Single MCP server. Persistence is injected, never imported directly."""
+"""{{ project_name }}: a single MCP server.
 
+Persistence is injected, never imported directly.
+"""
+
+{% if backend == "sqlite" -%}
 import os
+{% endif -%}
 from datetime import timedelta
+{%- if backend == "sqlite" %}
+from pathlib import Path
+{%- endif %}
 
 from fastmcp import FastMCP
+{%- if backend == "sqlite" %}
+from platformdirs import user_data_path
+{%- endif %}
 
-from mcpserver_template.models import Task, TaskFilter, TaskStats, TaskStatus, utcnow
-from mcpserver_template.repositories.memory import InMemoryTaskRepository
-from mcpserver_template.repositories.sqlite import SqliteTaskRepository
-from mcpserver_template.repository import TaskRepository
+from .models import Task, TaskFilter, TaskStats, TaskStatus, utcnow
+{%- if backend == "memory" %}
+from .repositories.memory import InMemoryTaskRepository
+{%- else %}
+from .repositories.sqlite import SqliteTaskRepository
+{%- endif %}
+from .repository import TaskRepository
+{% if backend == "sqlite" %}
+APP_NAME = "{{ project_slug }}"
 
-BACKENDS = {
-    "memory": lambda: InMemoryTaskRepository(),
-    "sqlite": lambda: SqliteTaskRepository(os.getenv("DB_PATH", "tasks.db")),
-}
+
+def database_path() -> Path:
+    """DB_PATH when set, otherwise a per-user data directory: never the current directory."""
+    configured = os.getenv("DB_PATH")
+    return Path(configured) if configured else user_data_path(APP_NAME) / "tasks.db"
 
 
-def build_repository(backend: str | None = None) -> TaskRepository:
-    """Pick a backend by name; TASK_BACKEND selects it at runtime."""
-    name = (backend or os.getenv("TASK_BACKEND", "memory")).lower()
-    try:
-        return BACKENDS[name]()
-    except KeyError:
-        raise ValueError(f"Unknown backend '{name}'. Use: {sorted(BACKENDS)}") from None
+def build_repository() -> TaskRepository:
+    """The configured repository. Tests inject their own through create_server."""
+    path = database_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return SqliteTaskRepository(path)
+{% else %}
 
+def build_repository() -> TaskRepository:
+    """The configured repository. Tests inject their own through create_server."""
+    return InMemoryTaskRepository()
+{% endif %}
 
 def _render_tasks(tasks: list[Task], title: str, empty: str) -> str:
     if not tasks:
@@ -57,7 +77,7 @@ def _render_stats(stats: TaskStats) -> str:
 
 def create_server(repository: TaskRepository) -> FastMCP:
     """Build a server bound to one repository. Tests inject their own."""
-    mcp = FastMCP("Task Manager")
+    mcp = FastMCP("{{ project_name }}")
 
     # ------------------------------------------------------------------ tools
 

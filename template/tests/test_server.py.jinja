@@ -4,20 +4,12 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from mcpserver_template.repositories.memory import InMemoryTaskRepository
-from mcpserver_template.repositories.sqlite import SqliteTaskRepository
-from mcpserver_template.server import build_repository, create_server
-
-
-@pytest.fixture(params=["memory", "sqlite"])
-def repo(request, tmp_path):
-    repository = (
-        InMemoryTaskRepository()
-        if request.param == "memory"
-        else SqliteTaskRepository(tmp_path / "tasks.db")
-    )
-    yield repository
-    repository.close()
+{% if backend == "memory" -%}
+from {{ module_name }}.repositories.memory import InMemoryTaskRepository
+{%- else -%}
+from {{ module_name }}.repositories.sqlite import SqliteTaskRepository
+{%- endif %}
+from {{ module_name }}.server import build_repository, create_server
 
 
 @pytest.fixture
@@ -100,14 +92,25 @@ async def test_prompt_is_rendered(client) -> None:
         assert "4" in result.messages[0].content.text
 
 
-def test_build_repository_selects_backend(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("TASK_BACKEND", "sqlite")
-    monkeypatch.setenv("DB_PATH", str(tmp_path / "tasks.db"))
+{% if backend == "memory" -%}
+def test_build_repository_is_in_memory() -> None:
+    repository = build_repository()
+    assert isinstance(repository, InMemoryTaskRepository)
+    repository.close()
+{%- else -%}
+def test_build_repository_honours_db_path(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "nested" / "tasks.db"
+    monkeypatch.setenv("DB_PATH", str(path))
     repository = build_repository()
     assert isinstance(repository, SqliteTaskRepository)
     repository.close()
+    assert path.exists()
 
 
-def test_build_repository_rejects_unknown_backend() -> None:
-    with pytest.raises(ValueError, match="Unknown backend"):
-        build_repository("postgres")
+def test_default_database_is_outside_the_working_directory(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.chdir(tmp_path)
+    from {{ module_name }}.server import database_path
+
+    assert tmp_path not in database_path().parents
+{%- endif %}

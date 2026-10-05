@@ -1,0 +1,79 @@
+# {{ project_name }}
+
+{{ description }}
+
+An MCP server built with [FastMCP](https://github.com/jlowin/fastmcp), generated from
+[mcpserver-template](https://github.com/zerotropism/mcpserver-template) with the `{{ backend }}`
+backend. The server only knows the `TaskRepository` protocol; the backend is injected.
+
+## Run
+
+```bash
+uv sync --all-groups
+uv run pytest
+uv run {{ project_slug }}          # serves over stdio
+```
+
+## Try it from a client
+
+[mcp-servers-cli](https://pypi.org/project/mcp-servers-cli/) lists what the server exposes and
+lets a model drive its tools:
+
+```bash
+uvx mcp-servers-cli inspect --stdio "uv run --directory $PWD {{ project_slug }}"
+uvx mcp-servers-cli agent "Add a task: write the report, then list pending tasks" \
+  --model qwen3.5:4b-mlx --stdio "uv run --directory $PWD {{ project_slug }}"
+```
+
+`filter_tasks` takes a nested object: small local models struggle with it. See the measured
+requirements in the mcp-servers-cli README before picking a model.
+{%- if backend == "sqlite" %}
+
+## Storage
+
+Tasks are stored in SQLite, at `DB_PATH` when it is set, otherwise in the per-user data
+directory (`platformdirs`), never in the current directory. MCP clients forward only a short
+list of environment variables to a stdio server, so pass `DB_PATH` explicitly:
+
+```bash
+uvx mcp-servers-cli inspect --env DB_PATH=$PWD/tasks.db --stdio "uv run --directory $PWD {{ project_slug }}"
+```
+{%- endif %}
+
+## MCP API
+
+| Kind | Name |
+|---|---|
+| Tools | `add_task`, `complete_task`, `complete_tasks`, `delete_task`, `filter_tasks` |
+| Resources | `tasks://all`, `tasks://pending`, `tasks://completed`, `tasks://stats`, `tasks://today`, `tasks://weekly-summary` |
+| Prompts | `task_summary_prompt`, `priority_analysis_prompt`, `scheduling_prompt`, `weekly_review_prompt` |
+
+`filter_tasks` takes one `TaskFilter`; every criterion is optional and they combine with AND:
+`{"task_filter": {"status": "pending", "keyword": "report"}}`. Errors are raised as MCP errors;
+no tool returns an `{"error": ...}` dictionary.
+
+## Layout
+
+```
+src/{{ module_name }}/
+├── models.py              Task, TaskFilter, TaskStats
+├── repository.py          TaskRepository protocol and TaskNotFoundError
+├── repositories/
+│   └── {{ backend }}.py          the {{ backend }} backend
+└── server.py              tools, resources and prompts; repository injected
+tests/                     same contract suite for any backend
+```
+
+Adding a backend means one class implementing the protocol's seven methods; the tests in
+`tests/test_repositories.py` apply to it unchanged once the `repo` fixture builds it.
+
+## Keeping up with the template
+
+The answers given at generation are in `.copier-answers.yml`. To bring in a newer version of
+the template:
+
+```bash
+uvx copier update
+```
+
+Commit `uv.lock` after the first `uv sync`: Dependabot needs it to propose updates.

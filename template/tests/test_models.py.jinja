@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from mcpserver_template.models import Task, TaskFilter, TaskStats, TaskStatus, utcnow
+from {{ module_name }}.models import Task, TaskFilter, TaskStats, TaskStatus, utcnow
 
 NOW = datetime(2026, 9, 9, 12, 0, tzinfo=utcnow().tzinfo)
 

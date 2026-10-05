@@ -1,0 +1,22 @@
+"""The repository under test: the backend this project was generated with."""
+
+import pytest
+{% if backend == "memory" %}
+from {{ module_name }}.repositories.memory import InMemoryTaskRepository
+
+
+@pytest.fixture
+def repo():
+    repository = InMemoryTaskRepository()
+    yield repository
+    repository.close()
+{%- else %}
+from {{ module_name }}.repositories.sqlite import SqliteTaskRepository
+
+
+@pytest.fixture
+def repo(tmp_path):
+    repository = SqliteTaskRepository(tmp_path / "tasks.db")
+    yield repository
+    repository.close()
+{%- endif %}

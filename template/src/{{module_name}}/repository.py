@@ -2,7 +2,7 @@
 
 from typing import Protocol, runtime_checkable
 
-from mcpserver_template.models import Task, TaskFilter, TaskStats
+from .models import Task, TaskFilter, TaskStats
 
 
 class TaskNotFoundError(LookupError):

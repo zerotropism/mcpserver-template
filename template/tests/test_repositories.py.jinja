@@ -1,24 +1,12 @@
-"""Same suite for every backend: behaviour must not depend on persistence."""
+"""The repository contract: any backend must pass this suite unchanged."""
 
 from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from mcpserver_template.models import TaskFilter, TaskStatus, utcnow
-from mcpserver_template.repositories.memory import InMemoryTaskRepository
-from mcpserver_template.repositories.sqlite import SqliteTaskRepository
-from mcpserver_template.repository import TaskNotFoundError, TaskRepository
-
-
-@pytest.fixture(params=["memory", "sqlite"])
-def repo(request, tmp_path):
-    if request.param == "memory":
-        repository = InMemoryTaskRepository()
-    else:
-        repository = SqliteTaskRepository(tmp_path / "tasks.db")
-    yield repository
-    repository.close()
+from {{ module_name }}.models import TaskFilter, TaskStatus, utcnow
+from {{ module_name }}.repository import TaskNotFoundError, TaskRepository
 
 
 def test_implements_protocol(repo) -> None:
