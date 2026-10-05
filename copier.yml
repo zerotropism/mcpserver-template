@@ -1,0 +1,47 @@
+# Questions asked by `copier copy`. The answers are stored in .copier-answers.yml, so that
+# `copier update` can bring later versions of this template into a generated project.
+_min_copier_version: "9.4"
+_subdirectory: template
+
+project_name:
+  type: str
+  help: Name of the server, as MCP clients will show it
+  default: Task Manager
+  validator: "{% if not project_name.strip() or project_name | length > 60 %}Give a name of 1 to 60 characters.{% endif %}"
+
+project_slug:
+  type: str
+  help: Package and command name
+  default: "{{ project_name | lower | replace(' ', '-') }}"
+  validator: >-
+    {% if not (project_slug | regex_search('^[a-z][a-z0-9-]*$')) %}
+    Use lowercase letters, digits and dashes, starting with a letter.
+    {% endif %}
+
+module_name:
+  type: str
+  default: "{{ project_slug | replace('-', '_') }}"
+  when: false
+
+description:
+  type: str
+  help: One-line description, for pyproject.toml and the README
+  default: MCP server generated from mcpserver-template
+
+backend:
+  type: str
+  help: Where tasks are stored
+  choices:
+    "memory: in memory, lost on restart (tests, demos)": memory
+    "sqlite: a SQLite file in the user data directory": sqlite
+  default: memory
+
+author_name:
+  type: str
+  help: Copyright holder, for LICENSE
+  validator: "{% if not author_name.strip() %}An author name is required.{% endif %}"
+
+copyright_year:
+  type: str
+  default: "{{ '%Y' | strftime }}"
+  when: false

@@ -1,0 +1,11 @@
+"""Every declared console script must resolve: a typo would only fail at run time."""
+
+from importlib.metadata import entry_points
+
+
+def test_console_scripts_resolve() -> None:
+    prefix = "{{ module_name }}."
+    scripts = [ep for ep in entry_points(group="console_scripts") if ep.value.startswith(prefix)]
+    assert [ep.name for ep in scripts] == ["{{ project_slug }}"]
+    for ep in scripts:
+        assert callable(ep.load())
