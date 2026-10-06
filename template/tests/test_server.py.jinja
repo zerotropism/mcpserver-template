@@ -3,13 +3,16 @@
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+{%- if auth == "bearer" %}
+from fastmcp.server.auth.providers.jwt import RSAKeyPair
+{%- endif %}
 
 {% if backend == "memory" -%}
 from {{ module_name }}.repositories.memory import InMemoryTaskRepository
 {%- else -%}
 from {{ module_name }}.repositories.sqlite import SqliteTaskRepository
 {%- endif %}
-from {{ module_name }}.server import build_repository, create_server
+from {{ module_name }}.server import {% if auth == "bearer" %}build_auth, {% endif %}build_repository, create_server
 
 
 @pytest.fixture
@@ -113,4 +116,37 @@ def test_default_database_is_outside_the_working_directory(tmp_path, monkeypatch
     from {{ module_name }}.server import database_path
 
     assert tmp_path not in database_path().parents
+{%- endif %}
+{%- if auth == "bearer" %}
+
+
+ISSUER = "https://issuer.test"
+AUDIENCE = "{{ project_slug }}"
+
+
+def configure_key(monkeypatch, keys: RSAKeyPair) -> None:
+    monkeypatch.setenv("MCP_JWT_PUBLIC_KEY", keys.public_key)
+    monkeypatch.setenv("MCP_JWT_ISSUER", ISSUER)
+    monkeypatch.setenv("MCP_JWT_AUDIENCE", AUDIENCE)
+    monkeypatch.delenv("MCP_JWT_JWKS_URI", raising=False)
+
+
+async def test_token_signed_with_the_configured_key_is_accepted(monkeypatch) -> None:
+    keys = RSAKeyPair.generate()
+    configure_key(monkeypatch, keys)
+    token = keys.create_token(subject="tester", issuer=ISSUER, audience=AUDIENCE)
+    assert await build_auth().verify_token(token) is not None
+
+
+async def test_token_signed_with_another_key_is_rejected(monkeypatch) -> None:
+    configure_key(monkeypatch, RSAKeyPair.generate())
+    token = RSAKeyPair.generate().create_token(subject="tester", issuer=ISSUER, audience=AUDIENCE)
+    assert await build_auth().verify_token(token) is None
+
+
+def test_bearer_auth_refuses_to_start_without_a_key(monkeypatch) -> None:
+    monkeypatch.delenv("MCP_JWT_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("MCP_JWT_JWKS_URI", raising=False)
+    with pytest.raises(RuntimeError, match="MCP_JWT_PUBLIC_KEY"):
+        build_auth()
 {%- endif %}

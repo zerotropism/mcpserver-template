@@ -3,7 +3,7 @@
 Persistence is injected, never imported directly.
 """
 
-{% if backend == "sqlite" -%}
+{% if backend == "sqlite" or transport == "http" -%}
 import os
 {% endif -%}
 from datetime import timedelta
@@ -12,6 +12,9 @@ from pathlib import Path
 {%- endif %}
 
 from fastmcp import FastMCP
+{%- if auth == "bearer" %}
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+{%- endif %}
 {%- if backend == "sqlite" %}
 from platformdirs import user_data_path
 {%- endif %}
@@ -44,6 +47,21 @@ def build_repository() -> TaskRepository:
     """The configured repository. Tests inject their own through create_server."""
     return InMemoryTaskRepository()
 {% endif %}
+{%- if auth == "bearer" %}
+
+def build_auth() -> JWTVerifier:
+    """Bearer tokens are JWTs, checked against MCP_JWT_PUBLIC_KEY (PEM) or MCP_JWT_JWKS_URI."""
+    public_key = os.getenv("MCP_JWT_PUBLIC_KEY")
+    jwks_uri = os.getenv("MCP_JWT_JWKS_URI")
+    if not (public_key or jwks_uri):
+        raise RuntimeError("Set MCP_JWT_PUBLIC_KEY or MCP_JWT_JWKS_URI to verify bearer tokens.")
+    return JWTVerifier(
+        public_key=public_key,
+        jwks_uri=jwks_uri,
+        issuer=os.getenv("MCP_JWT_ISSUER"),
+        audience=os.getenv("MCP_JWT_AUDIENCE"),
+    )
+{% endif %}
 
 def _render_tasks(tasks: list[Task], title: str, empty: str) -> str:
     if not tasks:
@@ -75,9 +93,15 @@ def _render_stats(stats: TaskStats) -> str:
     return "\n".join(lines)
 
 
+{% if auth == "bearer" -%}
+def create_server(repository: TaskRepository, auth: JWTVerifier | None = None) -> FastMCP:
+    """Build a server bound to one repository. Tests inject their own, without auth."""
+    mcp = FastMCP("{{ project_name }}", auth=auth)
+{%- else -%}
 def create_server(repository: TaskRepository) -> FastMCP:
     """Build a server bound to one repository. Tests inject their own."""
     mcp = FastMCP("{{ project_name }}")
+{%- endif %}
 
     # ------------------------------------------------------------------ tools
 
@@ -196,6 +220,7 @@ def create_server(repository: TaskRepository) -> FastMCP:
     return mcp
 
 
+{% if transport == "stdio" -%}
 def main() -> None:
     """Console entry point: build the configured repository and serve over stdio."""
     repository = build_repository()
@@ -203,6 +228,21 @@ def main() -> None:
         create_server(repository).run()
     finally:
         repository.close()
+{%- else -%}
+def main() -> None:
+    """Console entry point: streamable HTTP on MCP_HOST:MCP_PORT, default 127.0.0.1:8000."""
+{%- if auth == "bearer" %}
+    auth = build_auth()
+{%- endif %}
+    repository = build_repository()
+    try:
+        server = create_server(repository{% if auth == "bearer" %}, auth=auth{% endif %})
+        host = os.getenv("MCP_HOST", "127.0.0.1")
+        port = int(os.getenv("MCP_PORT", "8000"))
+        server.run(transport="http", host=host, port=port, show_banner=False)
+    finally:
+        repository.close()
+{%- endif %}
 
 
 if __name__ == "__main__":
