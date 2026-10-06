@@ -38,10 +38,12 @@ uvx mcp-servers-cli agent "Add a task: write the report" --model qwen3.5:4b-mlx 
   --stdio "uv run --directory $PWD my-server"
 ```
 
-## Update a generated project
+## Versions and updates
 
-Answers are stored in the project's `.copier-answers.yml`; `uvx copier update` applies a newer
-version of this template on top of local changes.
+Releases are git tags (`v1.0.0`, …). `copier copy` uses the latest one; `--vcs-ref v1.0.0`
+pins a version. A generated project records the version it came from in `.copier-answers.yml`
+(`_commit`); `uvx copier update` moves it to the latest release and merges the template's
+changes with local edits. Run it in a clean git working tree.
 
 ## Working on the template
 
