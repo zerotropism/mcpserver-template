@@ -19,6 +19,8 @@ uv run my-server          # serves over stdio
 | `project_slug` | lowercase, digits, dashes | distribution and command name; the module is the same with underscores |
 | `description` | free text | `pyproject.toml` and README |
 | `backend` | `memory`, `sqlite` | the one repository generated and wired in |
+| `transport` | `stdio`, `http` | subprocess server, or streamable HTTP on a port with a Dockerfile |
+| `auth` | `none`, `bearer` | asked for `http` only: JWT bearer tokens checked against a public key or a JWKS URL |
 | `author_name` | free text | `LICENSE` |
 
 The generated project comes with its tests, a CI workflow (ruff, pytest, pip-audit),
@@ -48,13 +50,17 @@ uv sync --all-groups
 uv run pytest
 ```
 
-For every combination of answers, the tests render the template, run the generated project's
-own ruff and pytest, then start the server over stdio and list its tools with the FastMCP
-client. They render the current checkout (`vcs_ref="HEAD"`), not the latest tag.
+For each of the six combinations of answers, the tests render the template, run the generated
+project's own ruff and pytest, then start the server and list its tools with the FastMCP
+client: over stdio, or over HTTP on a free port, with a signed token for `bearer`, which must
+also answer 401 to a request without one. Where Docker is installed, as on the CI runners, one
+HTTP project is built into an image. The tests render the current checkout (`vcs_ref="HEAD"`),
+not the latest tag.
 
 ```
 copier.yml                         questions
 template/
+├── Dockerfile.jinja               HTTP only, excluded otherwise (see _exclude)
 ├── pyproject.toml.jinja
 ├── README.md.jinja
 ├── src/{{module_name}}/
