@@ -3,16 +3,42 @@
 {{ description }}
 
 An MCP server built with [FastMCP](https://github.com/jlowin/fastmcp), generated from
-[mcpserver-template](https://github.com/zerotropism/mcpserver-template) with the `{{ backend }}`
-backend. The server only knows the `TaskRepository` protocol; the backend is injected.
+[mcpserver-template](https://github.com/zerotropism/mcpserver-template): `{{ backend }}` backend,
+`{{ transport }}` transport{% if transport == "http" %}, `{{ auth }}` authentication{% endif %}.
+The server only knows the `TaskRepository` protocol; the backend is injected.
 
 ## Run
 
 ```bash
 uv sync --all-groups
 uv run pytest
+{%- if transport == "stdio" %}
 uv run {{ project_slug }}          # serves over stdio
+{%- else %}
+uv run {{ project_slug }}          # serves streamable HTTP on http://127.0.0.1:8000/mcp
+{%- endif %}
 ```
+{%- if transport == "http" %}
+
+| Variable | Default | Role |
+|---|---|---|
+| `MCP_HOST` | `127.0.0.1` | interface to listen on (`0.0.0.0` in the Docker image) |
+| `MCP_PORT` | `8000` | port to listen on |
+{%- if auth == "bearer" %}
+| `MCP_JWT_PUBLIC_KEY` | none | PEM public key that signs the tokens |
+| `MCP_JWT_JWKS_URI` | none | or a JWKS URL, for keys published by an identity provider |
+| `MCP_JWT_ISSUER` | none | expected `iss` claim, recommended |
+| `MCP_JWT_AUDIENCE` | none | expected `aud` claim, recommended |
+{%- endif %}
+{%- if backend == "sqlite" %}
+| `DB_PATH` | per-user data directory | SQLite file |
+{%- endif %}
+{%- if auth == "bearer" %}
+
+Every request needs `Authorization: Bearer <JWT>`. The server refuses to start without
+`MCP_JWT_PUBLIC_KEY` or `MCP_JWT_JWKS_URI`, and answers 401 to a request without a valid token.
+{%- endif %}
+{%- endif %}
 
 ## Try it from a client
 
@@ -20,9 +46,18 @@ uv run {{ project_slug }}          # serves over stdio
 lets a model drive its tools:
 
 ```bash
+{%- if transport == "stdio" %}
 uvx mcp-servers-cli inspect --stdio "uv run --directory $PWD {{ project_slug }}"
 uvx mcp-servers-cli agent "Add a task: write the report, then list pending tasks" \
   --model qwen3.5:4b-mlx --stdio "uv run --directory $PWD {{ project_slug }}"
+{%- else %}
+{%- if auth == "bearer" %}
+export MCP_TOKEN=<a JWT accepted by the server>
+{%- endif %}
+uvx mcp-servers-cli inspect --http http://127.0.0.1:8000/mcp
+uvx mcp-servers-cli agent "Add a task: write the report, then list pending tasks" \
+  --model qwen3.5:4b-mlx --http http://127.0.0.1:8000/mcp
+{%- endif %}
 ```
 
 `filter_tasks` takes a nested object: small local models struggle with it. See the measured
@@ -32,12 +67,30 @@ requirements in the mcp-servers-cli README before picking a model.
 ## Storage
 
 Tasks are stored in SQLite, at `DB_PATH` when it is set, otherwise in the per-user data
-directory (`platformdirs`), never in the current directory. MCP clients forward only a short
+directory (`platformdirs`), never in the current directory.
+{%- if transport == "stdio" %} MCP clients forward only a short
 list of environment variables to a stdio server, so pass `DB_PATH` explicitly:
 
 ```bash
 uvx mcp-servers-cli inspect --env DB_PATH=$PWD/tasks.db --stdio "uv run --directory $PWD {{ project_slug }}"
 ```
+{%- endif %}
+{%- endif %}
+{%- if transport == "http" %}
+
+## Docker
+
+The image is built from the lock file, runs as an unprivileged user and listens on port 8000:
+
+```bash
+uv lock
+docker build -t {{ project_slug }} .
+docker run --rm -p 8000:8000{% if backend == "sqlite" %} -v {{ project_slug }}-data:/data{% endif %}{% if auth == "bearer" %} -e MCP_JWT_PUBLIC_KEY="$(cat public.pem)"{% endif %} {{ project_slug }}
+```
+{%- if backend == "sqlite" %}
+
+The database lives in the `/data` volume.
+{%- endif %}
 {%- endif %}
 
 ## MCP API
@@ -76,4 +129,4 @@ the template:
 uvx copier update
 ```
 
-Commit `uv.lock` after the first `uv sync`: Dependabot needs it to propose updates.
+Commit `uv.lock` after the first `uv sync`: Dependabot{% if transport == "http" %} and the Docker build{% endif %} need it.

@@ -2,6 +2,14 @@
 # `copier update` can bring later versions of this template into a generated project.
 _min_copier_version: "9.4"
 _subdirectory: template
+# Replaces copier's default exclusions, which are therefore repeated here.
+_exclude:
+  - "~*"
+  - "*.py[co]"
+  - "__pycache__"
+  - ".DS_Store"
+  - "{% if transport != 'http' %}Dockerfile{% endif %}"
+  - "{% if transport != 'http' %}.dockerignore{% endif %}"
 
 project_name:
   type: str
@@ -35,6 +43,23 @@ backend:
     "memory: in memory, lost on restart (tests, demos)": memory
     "sqlite: a SQLite file in the user data directory": sqlite
   default: memory
+
+transport:
+  type: str
+  help: How clients reach the server
+  choices:
+    "stdio: the client launches the server as a subprocess": stdio
+    "http: the server listens on a port (streamable HTTP), with a Dockerfile": http
+  default: stdio
+
+auth:
+  type: str
+  help: How HTTP clients authenticate
+  choices:
+    "none: no authentication, for a trusted network or behind a gateway": none
+    "bearer: JWT bearer tokens checked against a public key or a JWKS URL": bearer
+  default: none
+  when: "{{ transport == 'http' }}"
 
 author_name:
   type: str
